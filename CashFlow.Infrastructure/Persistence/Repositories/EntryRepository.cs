@@ -3,6 +3,7 @@ using CashFlow.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using CashFlow.Infrastructure.Messaging.Outbox;
 using CashFlow.Application.Contracts.Persistence;
+using CashFlow.Application.Contracts.Messaging;
 
 namespace CashFlow.Infrastructure.Persistence.Repositories;
 
@@ -23,14 +24,7 @@ public sealed class EntryRepository : IEntryRepository
         // Registra o lançamento e o evento na mesma unidade de persistência.
         await _context.Entries.AddAsync(entry, cancellationToken);
 
-        var payload = JsonSerializer.Serialize(new
-        {
-            EntryId = entry.Id,
-            Type = entry.Tipo,
-            Amount = entry.Valor,
-            Description = entry.Descricao,
-            OccurredAt = entry.DataOcorrencia
-        });
+        var payload = JsonSerializer.Serialize(new EntryCreatedEvent(entry.Id, entry.Tipo, entry.Valor, entry.Descricao, entry.DataOcorrencia));
 
         var message = new OutboxMessage("EntryCreated", payload);
 

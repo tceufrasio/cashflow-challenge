@@ -20,6 +20,8 @@ public sealed class CashFlowDbContext : DbContext
 
     public DbSet<DailyBalanceRecord> DailyBalances => Set<DailyBalanceRecord>();
 
+    public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Aplica as configurações de persistência definidas neste assembly.

@@ -6,7 +6,7 @@ A mensageria foi adicionada para desacoplar o registro dos lançamentos do proce
 
 O lançamento financeiro deve continuar sendo registrado mesmo quando o RabbitMQ ou o processamento do consolidado estiverem indisponíveis.
 
-O fluxo implementado nesta etapa é:
+O fluxo implementado é:
 
 ```text
 API
@@ -22,6 +22,10 @@ RabbitMQ
 cashflow.daily-balance
         ↓
 DailyBalanceConsumerService
+        ↓
+MySQL
+ ├── daily_balances
+ └── processed_messages
 ```
 
 ## RabbitMQ
@@ -53,9 +57,9 @@ Foi criada a tabela `outbox_messages`.
 
 Ao registrar um lançamento, o `EntryRepository` adiciona o lançamento e uma mensagem `EntryCreated` ao mesmo `DbContext`.
 
-Um único `SaveChangesAsync` persiste as duas alterações.
+Um único `SaveChangesAsync` persiste as duas alterações, mantendo o lançamento e a mensagem na mesma unidade de persistência.
 
-O objetivo é evitar que a disponibilidade do RabbitMQ determine o sucesso do registro financeiro.
+O objetivo é evitar que a disponibilidade do RabbitMQ determine o sucesso do registro financeiro. Se o RabbitMQ ou o Worker estiverem indisponíveis, o lançamento continua sendo salvo e a mensagem permanece pendente na Outbox.
 
 A migration foi criada com:
 
@@ -73,6 +77,22 @@ dotnet ef database update `
     --startup-project CashFlow.Api
 ```
 
+## Evento EntryCreated
+
+Foi criado o contrato `EntryCreatedEvent` para representar a mensagem enviada após o registro de um lançamento.
+
+O evento contém:
+
+```text
+EntryId
+Type
+Amount
+Description
+OccurredAt
+```
+
+O mesmo contrato é utilizado na serialização da Outbox e na desserialização realizada pelo consumidor.
+
 ## Publicação da Outbox
 
 O `OutboxPublisherService`, executado pelo Worker, consulta mensagens cujo `ProcessedAt` ainda não foi preenchido.
@@ -87,7 +107,7 @@ Queue: cashflow.daily-balance
 
 Após a publicação, a mensagem da Outbox é marcada como processada.
 
-A validação realizada confirmou a alteração de:
+A validação confirmou a alteração de:
 
 ```text
 ProcessedAt = NULL
@@ -95,7 +115,7 @@ ProcessedAt = NULL
 
 para uma data de processamento após a publicação.
 
-## Consumo
+## Consumo e atualização do consolidado
 
 O `DailyBalanceConsumerService` mantém um consumidor conectado à fila:
 
@@ -103,53 +123,23 @@ O `DailyBalanceConsumerService` mantém um consumidor conectado à fila:
 cashflow.daily-balance
 ```
 
-O consumo utiliza confirmação manual (`ACK`).
+O consumo utiliza confirmação manual (`ACK`). A mensagem somente é confirmada após o processamento realizado pelo consumidor. Em caso de erro, é utilizado `NACK` com reenvio para a fila.
 
-A mensagem somente é confirmada após o processamento realizado pelo consumidor. Em caso de erro, é utilizado `NACK` com reenvio para a fila.
+Ao receber um `EntryCreatedEvent`, o consumidor:
 
-Nesta etapa o consumidor apenas recebe a mensagem e registra seu conteúdo. A atualização efetiva do consolidado será implementada na próxima etapa.
+1. verifica se o `EntryId` já foi processado;
+2. identifica o dia do lançamento em UTC;
+3. localiza ou cria o registro correspondente em `daily_balances`;
+4. soma o valor em créditos ou débitos conforme o tipo do lançamento;
+5. registra o `EntryId` em `processed_messages`;
+6. persiste as alterações;
+7. confirma a mensagem no RabbitMQ.
 
-## Validação do RabbitMQ
-
-Antes da inicialização do consumidor:
-
-```text
-messages: 1
-consumers: 0
-```
-
-Após iniciar o consumidor:
-
-```text
-messages: 0
-consumers: 1
-```
-
-A consulta utilizada foi:
-
-```powershell
-docker exec cashflow-rabbitmq rabbitmqctl list_queues name messages consumers
-```
-
-Isso confirmou o fluxo:
-
-```text
-Outbox
-  ↓
-Publisher
-  ↓
-RabbitMQ
-  ↓
-Queue
-  ↓
-Consumer
-  ↓
-ACK
-```
+A confirmação somente ocorre depois da persistência do consolidado.
 
 ## Persistência do consolidado
 
-Foi criada a estrutura `DailyBalanceRecord` para armazenar o resultado consolidado de cada dia.
+Foi criada a estrutura `DailyBalanceRecord` para armazenar o consolidado de cada dia.
 
 A tabela `daily_balances` possui:
 
@@ -181,9 +171,106 @@ A estrutura foi validada diretamente no MySQL:
 docker exec cashflow-mysql mysql -uroot -proot cashflow -e "DESCRIBE daily_balances;"
 ```
 
+## Validação do processamento assíncrono
+
+A API foi executada inicialmente sem o Worker.
+
+Foi registrado um crédito de R$ 400,00 e o lançamento foi salvo normalmente, enquanto `daily_balances` permaneceu vazia. Isso confirmou que o registro financeiro não depende do processamento do consolidado.
+
+Após iniciar o Worker, a mensagem pendente foi publicada e consumida. O resultado foi:
+
+```text
+Date          TotalCredits  TotalDebits
+2026-09-02    400.00        0.00
+```
+
+A fila também foi consultada:
+
+```powershell
+docker exec cashflow-rabbitmq rabbitmqctl list_queues name messages consumers
+```
+
+Resultado após o processamento:
+
+```text
+cashflow.daily-balance  messages: 0  consumers: 1
+```
+
+Em seguida foi registrado um débito de R$ 150,00 para o mesmo dia. O consolidado passou a apresentar:
+
+```text
+Date          TotalCredits  TotalDebits
+2026-09-02    400.00        150.00
+```
+
+## Idempotência
+
+Como o RabbitMQ pode entregar uma mensagem novamente, o consumidor precisa impedir que o mesmo lançamento seja somado mais de uma vez.
+
+Foi criada a tabela `processed_messages`, utilizando o `EntryId` como chave primária:
+
+```text
+EntryId       char(36)       PK
+ProcessedAt   datetime(6)
+```
+
+A migration foi criada com:
+
+```powershell
+dotnet ef migrations add AddProcessedMessages `
+    --project CashFlow.Infrastructure `
+    --startup-project CashFlow.Api
+```
+
+E aplicada com:
+
+```powershell
+dotnet ef database update `
+    --project CashFlow.Infrastructure `
+    --startup-project CashFlow.Api
+```
+
+A estrutura foi validada com:
+
+```powershell
+docker exec cashflow-mysql mysql -uroot -proot cashflow -e "DESCRIBE processed_messages;"
+```
+
+Antes de alterar o consolidado, o consumidor verifica se o `EntryId` já existe em `processed_messages`.
+
+Se já existir, nenhuma soma é realizada. Se ainda não existir, a atualização de `daily_balances` e a inclusão em `processed_messages` são realizadas no mesmo `SaveChangesAsync`.
+
+## Validação da idempotência
+
+Foi criado um novo crédito de R$ 50,00. Após o primeiro processamento, o estado ficou:
+
+```text
+TotalCredits: 450.00
+TotalDebits:  150.00
+```
+
+O lançamento também foi registrado em `processed_messages`:
+
+```text
+EntryId: be0ce604-2c22-4455-8787-edf619e8911a
+```
+
+Para simular uma nova entrega, a mensagem correspondente da Outbox foi marcada novamente como pendente, definindo seu `ProcessedAt` como `NULL`.
+
+O Worker republicou o mesmo `EntryCreatedEvent`. A Outbox recebeu uma nova data em `ProcessedAt`, confirmando a republicação.
+
+Mesmo após a segunda entrega, o consolidado permaneceu:
+
+```text
+TotalCredits: 450.00
+TotalDebits:  150.00
+```
+
+Portanto, o crédito de R$ 50,00 não foi somado novamente, validando o comportamento idempotente do consumidor.
+
 ## Validação do projeto
 
-Após as alterações:
+Após as alterações foram executados:
 
 ```powershell
 dotnet build
@@ -195,11 +282,34 @@ Resultado:
 ```text
 Build: sucesso
 Testes: 19
+Aprovados: 19
 Falhas: 0
 ```
 
+## Estado atual
+
+O fluxo assíncrono está funcional de ponta a ponta:
+
+```text
+POST /api/entries
+        ↓
+entries + outbox_messages
+        ↓
+OutboxPublisherService
+        ↓
+RabbitMQ
+        ↓
+DailyBalanceConsumerService
+        ↓
+daily_balances + processed_messages
+        ↓
+ACK
+```
+
+Foram validados o processamento de crédito, o processamento de débito, a independência da API em relação ao Worker e o reprocessamento idempotente de uma mensagem duplicada.
+
 ## Próxima etapa
 
-O próximo passo é fazer o `DailyBalanceConsumerService` processar o evento `EntryCreated` e atualizar a tabela `daily_balances`.
+O próximo passo é fazer a consulta do consolidado diário utilizar diretamente a tabela `daily_balances`, evitando recalcular o resultado a partir de todos os lançamentos a cada requisição.
 
-Depois serão tratados os cenários de reprocessamento e idempotência para evitar que uma mensagem entregue novamente altere o consolidado mais de uma vez.
+Depois será realizada a validação de desempenho do endpoint de consolidação e a preparação da documentação final do projeto.
