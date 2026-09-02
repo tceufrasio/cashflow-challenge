@@ -33,15 +33,4 @@ public sealed class EntryRepository : IEntryRepository
         // Um único SaveChanges mantém lançamento e mensagem na mesma transação.
         await _context.SaveChangesAsync(cancellationToken);
     }
-
-    public async Task<IReadOnlyCollection<Entry>> GetByPeriodAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
-    {
-        // A consulta é somente para leitura e considera o início inclusivo e o fim exclusivo.
-        return await _context.Entries
-            .AsNoTracking()
-            .Where(x =>
-                x.DataOcorrencia >= start &&
-                x.DataOcorrencia < end)
-            .ToListAsync(cancellationToken);
-    }
 }

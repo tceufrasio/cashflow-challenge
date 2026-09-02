@@ -244,7 +244,45 @@ O atendimento desse volume ainda deve ser validado por teste de
 desempenho; a arquitetura por si só não é tratada como comprovação de
 capacidade.
 
+## Teste de carga
+
+Foi realizado um teste local para validar o comportamento do endpoint de consolidação sob consultas concorrentes.
+
+O primeiro cenário executou uma rajada de 50 requisições concorrentes para:
+
+```http
+GET /api/daily-balances/2026-09-02
+```
+
+Resultado:
+
+```text
+Requisições: 50
+Sucessos: 50
+Falhas: 0
+Percentual de falhas: 0%
+Tempo da execução: 0,661 s
+```
+
+Também foi realizado um teste adicional de estabilidade com 10 rajadas de 50 requisições.
+
+Resultado:
+
+```text
+Requisições: 500
+Sucessos: 500
+Falhas: 0
+Percentual de falhas: 0%
+```
+
+Os testes foram executados localmente utilizando PowerShell.
+
+O tempo total do segundo teste não foi utilizado para calcular throughput, pois inclui o custo de criação dos jobs do PowerShell e intervalos adicionados entre as rodadas.
+
+Os resultados demonstram que, no ambiente local e no cenário testado, o endpoint respondeu às rajadas de 50 consultas concorrentes sem perda de requisições.
+
+Esse teste não representa um benchmark de ambiente produtivo.
+
 ## Próxima etapa
 
-Validar o comportamento do endpoint sob carga e documentar os resultados
-medidos.
+Finalizar a documentação de execução do projeto e revisar os pontos de resiliência e configuração antes da entrega.

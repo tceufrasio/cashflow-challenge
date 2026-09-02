@@ -25,18 +25,4 @@ public sealed class EntryRepositoryFake : IEntryRepository
 
         return Task.CompletedTask;
     }
-
-    public Task<IReadOnlyCollection<Entry>> GetByPeriodAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
-    {
-        CancellationTokenReceived = cancellationToken;
-
-        // Simula a consulta considerando início inclusivo e fim exclusivo.
-        IReadOnlyCollection<Entry> entries = Entries
-            .Where(x =>
-                x.DataOcorrencia >= start &&
-                x.DataOcorrencia < end)
-            .ToList();
-
-        return Task.FromResult(entries);
-    }
 }
