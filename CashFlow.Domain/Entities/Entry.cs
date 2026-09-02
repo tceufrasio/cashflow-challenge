@@ -5,16 +5,16 @@ namespace CashFlow.Domain.Entities;
 /// <summary>
 /// Representa um lançamento financeiro de crédito ou débito.
 /// </summary>
-public class Lancamento
+public class Entry
 {
     public Guid Id { get; private set; }
-    public TipoLancamento Tipo { get; private set; }
+    public EntryType Tipo { get; private set; }
     public decimal Valor { get; private set; }
     public string Descricao { get; private set; }
     public DateTimeOffset DataOcorrencia { get; private set; }
     public DateTimeOffset CriadoEm { get; private set; }
 
-    public Lancamento(TipoLancamento tipo, decimal valor, string descricao, DateTimeOffset dataOcorrencia)
+    public Entry(EntryType tipo, decimal valor, string descricao, DateTimeOffset dataOcorrencia)
     {
         // Garante que apenas tipos definidos no domínio sejam aceitos.
         if (!Enum.IsDefined(tipo))

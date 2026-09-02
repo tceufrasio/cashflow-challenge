@@ -3,20 +3,20 @@ using CashFlow.Domain.Enums;
 
 namespace CashFlow.Domain.Tests.Entities;
 
-public class LancamentoTests
+public class EntryTests
 {
     // Verifica se um lançamento com dados válidos é criado corretamente.
     [Fact]
-    public void CriarLancamento_ComDadosValidos_DeveCriarLancamento()
+    public void CreateEntry_WithValidData_ShouldCreateEntry()
     {
         // Preparação
-        var tipo = TipoLancamento.Credito;
+        var tipo = EntryType.Credito;
         var valor = 150.50m;
         var descricao = "Venda realizada";
         var dataOcorrencia = DateTimeOffset.UtcNow;
 
         // Execução
-        var lancamento = new Lancamento(tipo, valor, descricao, dataOcorrencia);
+        var lancamento = new Entry(tipo, valor, descricao, dataOcorrencia);
 
         // Validação
         Assert.NotEqual(Guid.Empty, lancamento.Id);
@@ -32,10 +32,10 @@ public class LancamentoTests
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(-100.50)]
-    public void CriarLancamento_ComValorInvalido_DeveLancarExcecao(decimal valor)
+    public void CreateEntry_WithInvalidValue_ShouldThrowException(decimal valor)
     {
         // Execução
-        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new Lancamento(TipoLancamento.Credito, valor, "Venda realizada", DateTimeOffset.UtcNow));
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new Entry(EntryType.Credito, valor, "Venda realizada", DateTimeOffset.UtcNow));
 
         // Validação
         Assert.Equal("valor", exception.ParamName);
@@ -46,10 +46,10 @@ public class LancamentoTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void CriarLancamento_ComDescricaoInvalida_DeveLancarExcecao(string? descricao)
+    public void CreateEntry_WithInvalidDescription_ShouldThrowException(string? descricao)
     {
         // Execução
-        var exception = Assert.Throws<ArgumentException>(() => new Lancamento(TipoLancamento.Credito, 100m, descricao!, DateTimeOffset.UtcNow));
+        var exception = Assert.Throws<ArgumentException>(() => new Entry(EntryType.Credito, 100m, descricao!, DateTimeOffset.UtcNow));
 
         // Validação
         Assert.Equal("descricao", exception.ParamName);
@@ -57,13 +57,13 @@ public class LancamentoTests
 
     // Verifica se um tipo não definido no domínio é rejeitado.
     [Fact]
-    public void CriarLancamento_ComTipoInvalido_DeveLancarExcecao()
+    public void CreateEntry_WithInvalidType_ShouldThrowException()
     {
         // Preparação
-        var tipoInvalido = (TipoLancamento)999;
+        var tipoInvalido = (EntryType)999;
 
         // Execução
-        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new Lancamento(tipoInvalido, 100m, "Venda realizada", DateTimeOffset.UtcNow));
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new Entry(tipoInvalido, 100m, "Venda realizada", DateTimeOffset.UtcNow));
 
         // Validação
         Assert.Equal("tipo", exception.ParamName);
@@ -71,13 +71,13 @@ public class LancamentoTests
 
     // Verifica se espaços extras no início e no final da descrição são removidos.
     [Fact]
-    public void CriarLancamento_ComDescricaoComEspacos_DeveRemoverEspacos()
+    public void CreateEntry_WithDescriptionContainingSpaces_ShouldTrimDescription()
     {
         // Preparação
         var descricao = "  Venda realizada  ";
 
         // Execução
-        var lancamento = new Lancamento(TipoLancamento.Credito, 100m, descricao, DateTimeOffset.UtcNow);
+        var lancamento = new Entry(EntryType.Credito, 100m, descricao, DateTimeOffset.UtcNow);
 
         // Validação
         Assert.Equal("Venda realizada", lancamento.Descricao);

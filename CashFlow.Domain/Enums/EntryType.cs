@@ -1,6 +1,6 @@
 ﻿namespace CashFlow.Domain.Enums
 {
-    public enum TipoLancamento
+    public enum EntryType
     {
         Credito = 1,
         Debito = 2
