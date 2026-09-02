@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="CashFlow.Api/CashFlow.Api.csproj" Id="40e530c9-60d3-42e0-a9eb-d21d058b38f8" />
+    <Project Path="CashFlow.Application/CashFlow.Application.csproj" />
+    <Project Path="CashFlow.Domain/CashFlow.Domain.csproj" />
+    <Project Path="CashFlow.Infrastructure/CashFlow.Infrastructure.csproj" />
+    <Project Path="CashFlow.Worker/CashFlow.Worker.csproj" Id="8cc2e77f-458d-414e-b328-b101a2f4ab11" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="CashFlow.Domain.Tests/CashFlow.Domain.Tests.csproj" Id="6c172b8d-d75c-40a7-9b93-081bb744d2d3" />
+  </Folder>
+</Solution>
