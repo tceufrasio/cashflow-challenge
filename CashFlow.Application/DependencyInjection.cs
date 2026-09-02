@@ -1,4 +1,5 @@
-﻿using CashFlow.Application.Entries.Create;
+﻿using CashFlow.Application.DailyBalances.Get;
+using CashFlow.Application.Entries.Create;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CashFlow.Application;
@@ -12,6 +13,7 @@ public static class DependencyInjection
     {
         // Registra os casos de uso utilizados pela aplicação.
         services.AddScoped<CreateEntryUseCase>();
+        services.AddScoped<GetDailyBalanceUseCase>();
 
         return services;
     }
