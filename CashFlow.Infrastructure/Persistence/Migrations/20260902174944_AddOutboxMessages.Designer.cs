@@ -4,6 +4,7 @@ using CashFlow.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CashFlow.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CashFlowDbContext))]
-    partial class CashFlowDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260902174944_AddOutboxMessages")]
+    partial class AddOutboxMessages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -77,24 +80,6 @@ namespace CashFlow.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProcessedAt");
 
                     b.ToTable("outbox_messages", (string)null);
-                });
-
-            modelBuilder.Entity("CashFlow.Infrastructure.Persistence.Models.DailyBalanceRecord", b =>
-                {
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date");
-
-                    b.Property<decimal>("TotalCredits")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalDebits")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Date");
-
-                    b.ToTable("daily_balances", (string)null);
                 });
 #pragma warning restore 612, 618
         }
