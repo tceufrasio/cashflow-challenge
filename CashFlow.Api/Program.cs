@@ -1,28 +1,33 @@
+using CashFlow.Api.ExceptionHandling;
+using CashFlow.Application;
 using CashFlow.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configura a persistência e os serviços de infraestrutura.
-var connectionString = builder.Configuration.GetConnectionString("CashFlow") ?? throw new InvalidOperationException("A string de conexão 'CashFlow' não foi configurada.");
+// Obtém a conexão utilizada pela infraestrutura.
+var connectionString = builder.Configuration.GetConnectionString("CashFlow")
+    ?? throw new InvalidOperationException(
+        "A string de conexão 'CashFlow' não foi configurada.");
 
+builder.Services.AddApplication();
 builder.Services.AddInfrastructure(connectionString);
 
-// Add services to the container.
 builder.Services.AddControllers();
-
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// Padroniza o tratamento de erros da API.
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
+app.UseExceptionHandler();
 app.UseHttpsRedirection();
-
 app.UseAuthorization();
 
 app.MapControllers();
