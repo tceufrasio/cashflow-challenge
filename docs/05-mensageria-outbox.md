@@ -308,8 +308,10 @@ ACK
 
 Foram validados o processamento de crédito, o processamento de débito, a independência da API em relação ao Worker e o reprocessamento idempotente de uma mensagem duplicada.
 
-## Próxima etapa
+## Estado final
 
-O próximo passo é fazer a consulta do consolidado diário utilizar diretamente a tabela `daily_balances`, evitando recalcular o resultado a partir de todos os lançamentos a cada requisição.
+A consulta do consolidado diário utiliza diretamente a tabela `daily_balances`, evitando recalcular o resultado a partir dos lançamentos em cada requisição.
 
-Depois será realizada a validação de desempenho do endpoint de consolidação e a preparação da documentação final do projeto.
+O endpoint também foi submetido aos testes locais de carga documentados em `docs/04-consolidacao-diaria.md`.
+
+Com isso, o fluxo principal proposto para o desafio está concluído.
