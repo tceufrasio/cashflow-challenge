@@ -2,113 +2,166 @@
 
 ## Objetivo
 
-Implementar a consulta do saldo consolidado de um determinado dia, considerando os lançamentos de crédito e débito registrados no fluxo de caixa.
+Disponibilizar a consulta do saldo consolidado de um determinado dia,
+considerando os lançamentos de crédito e débito registrados no fluxo de
+caixa.
 
 O consolidado apresenta:
 
-- total de créditos;
-- total de débitos;
-- saldo do dia.
+-   total de créditos;
+-   total de débitos;
+-   saldo do dia.
 
 O saldo é calculado pela diferença entre créditos e débitos:
 
-```text
+``` text
 Saldo = Total de créditos - Total de débitos
 ```
 
+A consolidação é processada de forma assíncrona pelo Worker e armazenada
+previamente no banco. Dessa forma, a consulta não precisa percorrer os
+lançamentos a cada requisição.
+
 ## Domínio
 
-Foi criada a entidade `DailyBalance`, responsável por representar o consolidado financeiro de um dia.
+A entidade `DailyBalance` representa o consolidado financeiro de um dia.
 
-A entidade utiliza `DateOnly`, pois o consolidado representa um dia e não um instante específico.
+Ela utiliza `DateOnly`, pois o consolidado representa uma data e não um
+instante específico.
 
-O saldo não é armazenado separadamente. Ele é calculado a partir dos totais de crédito e débito, evitando manter um valor que pode ser derivado.
+O saldo não é armazenado separadamente. Ele é calculado a partir dos
+totais:
 
-Também foi definido que os totais de créditos e débitos não podem ser negativos.
+``` text
+Balance = TotalCredits - TotalDebits
+```
+
+Os totais de créditos e débitos não podem ser negativos.
+
+## Processamento do consolidado
+
+O processamento dos lançamentos ocorre de forma assíncrona:
+
+``` text
+POST /api/entries
+        ↓
+entries + outbox_messages
+        ↓
+OutboxPublisherService
+        ↓
+RabbitMQ
+        ↓
+DailyBalanceConsumerService
+        ↓
+daily_balances
+```
+
+O `DailyBalanceConsumerService` recebe o evento `EntryCreated` e
+atualiza os totais correspondentes à data do lançamento.
+
+A data do evento é interpretada em UTC para determinar o dia do
+consolidado.
+
+O processamento assíncrono, a Transactional Outbox e a idempotência
+estão detalhados em `docs/05-mensageria-outbox.md`.
 
 ## Application
 
-Foi criado o caso de uso `GetDailyBalanceUseCase`.
+O contrato `IDailyBalanceRepository` define a leitura do consolidado
+diário:
 
-O fluxo executado pelo caso de uso é:
-
-```text
-Data solicitada
-      ↓
-Define o período do dia
-      ↓
-Consulta os lançamentos
-      ↓
-Soma os créditos
-      ↓
-Soma os débitos
-      ↓
-Cria o DailyBalance
+``` text
+GetByDateAsync(DateOnly date)
 ```
 
-Nesta implementação, o período diário é considerado em UTC.
+O `GetDailyBalanceUseCase` depende desse contrato e não conhece EF Core
+ou MySQL.
 
-O contrato `IEntryRepository` foi ampliado com `GetByPeriodAsync`, permitindo que a Application solicite os lançamentos de um período sem depender diretamente do EF Core ou do MySQL.
+O fluxo da consulta é:
+
+``` text
+Data solicitada
+      ↓
+GetDailyBalanceUseCase
+      ↓
+IDailyBalanceRepository
+      ↓
+daily_balances
+      ↓
+DailyBalance
+```
+
+Quando não existe um consolidado para a data solicitada, o caso de uso
+retorna um `DailyBalance` zerado.
 
 ## Persistência
 
-O `EntryRepository` implementa a consulta utilizando EF Core.
+O `DailyBalanceRepository` implementa `IDailyBalanceRepository`
+utilizando EF Core.
 
-A consulta utiliza:
+A consulta é realizada diretamente na tabela `daily_balances`.
 
-```csharp
+Como o registro é utilizado somente para leitura, a consulta utiliza:
+
+``` csharp
 .AsNoTracking()
 ```
 
-porque os lançamentos são utilizados somente para leitura.
+A tabela mantém um registro por data:
 
-O período utiliza início inclusivo e fim exclusivo:
-
-```text
-DataOcorrencia >= início
-DataOcorrencia < próximo dia
+``` text
+Date          date           PK
+TotalCredits  decimal(18,2)
+TotalDebits   decimal(18,2)
 ```
 
-Isso evita a necessidade de trabalhar com horários como `23:59:59.999`.
+O saldo não precisa ser persistido, pois continua sendo derivado dos
+dois totais.
+
+Essa abordagem evita recalcular o consolidado consultando todos os
+lançamentos do dia em cada requisição.
 
 ## API
 
-Foi criado o endpoint:
+O endpoint de consulta é:
 
-```http
+``` http
 GET /api/daily-balances/{date}
 ```
 
 Exemplo:
 
-```http
+``` http
 GET /api/daily-balances/2026-09-02
 ```
 
-A API recebe a data, chama o `GetDailyBalanceUseCase` e retorna o consolidado calculado.
+A API recebe a data, chama o `GetDailyBalanceUseCase` e retorna o
+consolidado previamente processado.
+
+Para uma data sem movimentações, os valores retornados são zero.
 
 ## Testes automatizados
 
-Foram adicionados testes para validar:
+Os testes do `GetDailyBalanceUseCase` validam:
 
-- criação do `DailyBalance`;
-- cálculo de saldo positivo;
-- cálculo de saldo negativo;
-- rejeição de totais negativos;
-- consolidação com créditos e débitos;
-- exclusão de lançamentos pertencentes a outro dia;
-- consolidação de um dia sem movimentações.
+-   retorno do consolidado quando existe;
+-   retorno zerado quando a data ainda não possui consolidado;
+-   encaminhamento da data e do `CancellationToken` ao repositório.
 
-Os testes foram executados pelo PowerShell:
+Também permanecem os testes de domínio para validar as regras de
+`DailyBalance`.
 
-```powershell
+A validação foi executada com:
+
+``` powershell
 dotnet build
 dotnet test
 ```
 
-Resultado da etapa:
+Resultado:
 
-```text
+``` text
+Build: sucesso
 Total de testes: 19
 Bem-sucedidos: 19
 Falharam: 0
@@ -118,70 +171,80 @@ Falharam: 0
 
 A API foi executada localmente:
 
-```powershell
+``` powershell
 dotnet run --project CashFlow.Api
 ```
 
-Foram registrados lançamentos através do endpoint:
+Durante a validação, a aplicação iniciou em `http://localhost:5192`.
 
-```http
-POST /api/entries
-```
+A consulta do consolidado existente foi realizada com:
 
-Exemplo utilizado no PowerShell:
-
-```powershell
-$body = @{
-    type = 1
-    amount = 1000.00
-    description = "Venda"
-    occurredAt = "2026-09-02T10:00:00Z"
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-    -Uri "http://localhost:5192/api/entries" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-A consolidação foi consultada com:
-
-```powershell
+``` powershell
 Invoke-RestMethod `
     -Uri "http://localhost:5192/api/daily-balances/2026-09-02" `
     -Method Get
 ```
 
-Resultado obtido:
+Resultado:
 
-```text
+``` text
 date          : 2026-09-02
-totalCredits  : 1650,75
-totalDebits   : 300,00
-balance       : 1350,75
+totalCredits  : 450,00
+totalDebits   : 150,00
+balance       : 300,00
 ```
 
-O valor inclui um crédito de R$ 150,75 registrado anteriormente durante a validação da API, além dos lançamentos criados nesta etapa.
+Também foi consultada uma data sem movimentações:
 
-Com isso foi validado o fluxo:
+``` powershell
+Invoke-RestMethod `
+    -Uri "http://localhost:5192/api/daily-balances/2026-09-10" `
+    -Method Get
+```
 
-```text
+Resultado:
+
+``` text
+date          : 2026-09-10
+totalCredits  : 0
+totalDebits   : 0
+balance       : 0
+```
+
+Com isso foi validado o fluxo atual de leitura:
+
+``` text
 HTTP
  ↓
 API
  ↓
 Application
  ↓
-Domain
+IDailyBalanceRepository
  ↓
 Infrastructure
  ↓
 EF Core
  ↓
-MySQL
+daily_balances
 ```
+
+## Decisão de arquitetura
+
+A primeira versão do consolidado calculava créditos e débitos
+consultando os lançamentos do dia durante cada GET.
+
+A implementação atual transfere esse cálculo para o processamento
+assíncrono e mantém o resultado em `daily_balances`.
+
+Isso reduz o trabalho realizado pelo endpoint de consulta e prepara o
+consolidado para o requisito de pico de 50 consultas por segundo.
+
+O atendimento desse volume ainda deve ser validado por teste de
+desempenho; a arquitetura por si só não é tratada como comprovação de
+capacidade.
 
 ## Próxima etapa
 
-Evoluir o processamento para atender aos requisitos de independência e resiliência da consolidação, avaliando o uso de RabbitMQ, Worker e processamento assíncrono.
+Validar o comportamento do endpoint sob carga e documentar os resultados
+medidos.

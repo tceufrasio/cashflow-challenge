@@ -16,6 +16,7 @@ public static class DependencyInjection
         // Configura o EF Core para utilizar MySQL como mecanismo de persistência.
         services.AddDbContext<CashFlowDbContext>(options => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
         services.AddScoped<IEntryRepository, EntryRepository>();
+        services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
         return services;
     }
 }
